@@ -1,0 +1,16 @@
+{
+    "prepopulate":[
+        {
+            "table":"model_status",
+            "values":[
+                {"name":"new"},
+                {"name":"ready"},
+                {"name":"trained"},
+                {"name":"production"}
+            ]
+        }
+    ],
+    "object_stores":[
+        {"name":"file_store", "uri":"file://{datadir}/file_store", "kwargs":{"compression":"gzip"}}
+    ]
+}

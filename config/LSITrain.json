@@ -1,0 +1,9 @@
+{
+    "model_name":"LSIUnitTest",
+    "datasources":["wiki"],
+    "input_feature_set":"text_bag_of_words",
+    "output_feature_set":"LSI(text_bag_of_words)",
+    "hyperparameters":{
+        "n_components":10
+    }
+}

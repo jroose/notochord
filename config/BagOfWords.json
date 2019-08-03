@@ -1,0 +1,7 @@
+{
+    "input_feature_set": "ArticleParts",
+    "input_feature": "text",
+    "output_feature_set": "text_bag_of_words",
+    "datasources": ["wiki"],
+    "chunk_size": 16384
+}
