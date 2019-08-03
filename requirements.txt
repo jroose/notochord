@@ -1,0 +1,11 @@
+setuptools
+feedparser
+sqlalchemy
+lru-dict
+coverage
+sqlalchemy-utc
+iso8601
+numpy
+scipy
+scikit-learn
+mysql
