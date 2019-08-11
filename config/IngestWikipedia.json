@@ -1,4 +1,5 @@
 {
     "continue_on_error": true,
-    "datasource":"wiki"
+    "datasource":"wiki",
+    "object_store":"file_store"
 }

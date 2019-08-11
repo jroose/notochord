@@ -3,5 +3,5 @@
     "input_feature": "text",
     "output_feature_set": "text_bag_of_words",
     "datasources": ["wiki"],
-    "chunk_size": 16384
+    "chunk_size": 512
 }
