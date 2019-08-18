@@ -1,4 +1,4 @@
-from .. import App, schema, ABCArgumentGroup, ModelSet, Model, lookup, persist, lookup_or_persist, WorkOrderArgs, filter_widgets
+from .. import App, schema, ABCArgumentGroup, Model, lookup, persist, lookup_or_persist, WorkOrderArgs, filter_widgets
 import sqlalchemy
 import sys
 import uuid

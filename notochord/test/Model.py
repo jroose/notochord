@@ -1,4 +1,4 @@
-from ..Model import ModelSet, Model
+from ..Model import Model
 
 from . import FeaturePopulatedTestCase, datadir_session
 from .. import export, schema, grouper, get_utcnow, persist, lookup
@@ -36,7 +36,6 @@ class TestModel(FeaturePopulatedTestCase):
         self.fake_weights = [2,4,6,8]
         self.fake_algorithm = FakeAlg
         self.test_metric = "TEST_METRIC"
-        self.test_model_set_name = "test_model"
 
         #Generate training widgets
         t_w = schema.widget
@@ -71,18 +70,9 @@ class TestModel(FeaturePopulatedTestCase):
     def runTest(self):
         t_alg = schema.algorithm
 
-        self.log.info("Creating a new model_set")
-        model_set = ModelSet(self.session, self.test_model_set_name)
-        expected_model_id = model_set.idmodel_set
-        del model_set
-
-        self.log.info("Looking up created model_set")
-        model_set = ModelSet(self.session, self.test_model_set_name)
-        self.assertEqual(model_set.idmodel_set, expected_model_id)
-
         self.log.info("Creating a new model_set edition")
         fake_alg = FakeAlg(**self.fake_hyper)
-        m = Model.new_from_model_set(model_set, fake_alg, self.input_features, self.output_features)
+        m = Model.new_model(model_set, fake_alg, self.input_features, self.output_features)
         expected_me_id = m.idmodel
         self.assertEqual(m.hyperparameters, self.fake_hyper)
         self.assertEqual(m.status, "new")

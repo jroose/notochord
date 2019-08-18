@@ -7,13 +7,7 @@ import sqlalchemy
 import logging
 import json
 
-from ..initialize import Initialize
-from ..ingest.IngestRSS import IngestRSS
-from ..features.BagOfWords import BagOfWords
-from ..features.Datasource import Datasource
-from ..dim_reduce.LSI import LSITrain
 from .. import schema, export, build_log
-from ..ObjectStore import FileStore
 
 __all__ = ["test_data_dir", "default_test_config"]
 
@@ -42,12 +36,35 @@ default_test_config = json.loads(json.dumps({
 #                    {"name": "comment"}
 #                ],
             },{
-                "table":"model_status",
+                "table":"metric_type",
                 "values":[
-                    {"name":u"new"},
-                    {"name":u"ready"},
-                    {"name":u"trained"},
-                    {"name":u"production"}
+                ]
+            },{
+                "table":"model_feature_type",
+                "values":[
+                    {"name":u"input"},
+                    {"name":u"output"},
+                    {"name":u"predict"},
+                ]
+            },{
+                "table":"model_widget_type",
+                "values":[
+                    {"name":u"train"},
+                    {"name":u"predict"},
+                    {"name":u"validate"},
+                ]
+            },{
+                "table":"mtag_set",
+                "values":[
+                    {"name":u"status", "idmtag_set":1},
+                ]
+            },{
+                "table":"mtag",
+                "values":[
+                    {"name":u"new", "idmtag_set":1},
+                    {"name":u"ready", "idmtag_set":1},
+                    {"name":u"trained", "idmtag_set":1},
+                    {"name":u"production", "idmtag_set":1}
                 ]
             }
         ],
@@ -122,6 +139,7 @@ class DataDirTestCase(unittest.TestCase):
 @export
 class InitializedTestCase(DataDirTestCase):
     def setUp(self, no_engine=False):
+        from ..initialize import Initialize
         super(InitializedTestCase, self).setUp()
         self.confdir = make_config_dir()
 
@@ -146,6 +164,7 @@ class InitializedTestCase(DataDirTestCase):
 @export
 class FileStoreTestCase(InitializedTestCase):
     def setUp(self, no_engine=False):
+        from ..ObjectStore import FileStore
         super(FileStoreTestCase, self).setUp(no_engine=no_engine)
         self.session = self.Session()
         self.filestore = FileStore.create(self.session, u"TestFileStore", "file://" + os.path.join(self.result_dir, "filestore"))
@@ -157,6 +176,8 @@ class FileStoreTestCase(InitializedTestCase):
 @export
 class PopulatedTestCase(InitializedTestCase):
     def setUp(self, no_engine=False):
+        from ..ingest.IngestRSS import IngestRSS
+        
         super(PopulatedTestCase, self).setUp(no_engine=no_engine)
         app = IngestRSS(self.result_dir, log=self.log)
         app.run()
@@ -164,6 +185,9 @@ class PopulatedTestCase(InitializedTestCase):
 @export
 class FeaturePopulatedTestCase(PopulatedTestCase):
     def setUp(self, no_engine=False):
+        from ..features.BagOfWords import BagOfWords
+        from ..features.Datasource import Datasource
+
         super(FeaturePopulatedTestCase, self).setUp(no_engine=no_engine)
         app = BagOfWords(self.result_dir, log=self.log)
         app.run()
@@ -175,6 +199,8 @@ class FeaturePopulatedTestCase(PopulatedTestCase):
 @export
 class LSIPopulatedTestCase(FeaturePopulatedTestCase):
     def setUp(self, no_engine=False):
+        from ..dim_reduce.LSI import LSITrain
+
         super(LSIPopulatedTestCase, self).setUp(no_engine=no_engine)
         app = LSITrain(self.result_dir, log=self.log)
         app.run()

@@ -65,29 +65,6 @@ class CrossvalidationQuery(object):
         self.session = None
 
 @export
-class ModelSet(object):
-    def __init__(self, session, name):
-        t_mset = schema.model_set
-        self.__dict__.update(dict(
-            session = session,
-            model_set = lookup(session, t_mset, name=name) \
-                or persist(session, t_mset(name=name))
-        ))
-
-
-    def __getattr__(self, name):
-        return getattr(self.model_set, name)
-
-    def __setattr__(self, name, value):
-        raise TypeError("ModelSet instances are immutable")
-
-    def latest_model(self):
-        return Model.get_latest(self)
-
-    def new_model(self, alg, input_features, output_features=None, params=None, log=None):
-        return Model.new_from_model_set(self, alg, input_features, output_features, params=params, log=log)
-
-@export
 class Model(object):
     def __init__(self, session, dbinst, log=None):
         self.__dict__.update(dict(
@@ -231,25 +208,11 @@ class Model(object):
 #            yield ret
 
     @classmethod
-    def get_latest(klass, model_set):
-        t_m = schema.model
-        dbinst = model_set.session.query(t_m) \
-            .filter_by(idmodel_set=model_set.idmodel_set) \
-            .filter(t_m.trained_time != None) \
-            .order_by(t_m.trained_time.desc()) \
-            .first()
-
-        if dbinst is None: return None
-    
-        return klass(model_set.session, dbinst)
-    
-    @classmethod
-    def new_from_model_set(klass, model_set, algorithm, input_features, output_features=None, params=None, log=None):
+    def new_from_model_set(klass, algorithm, input_features, output_features=None, params=None, log=None):
         t_m = schema.model
         t_ms = schema.model_status
         t_alg = schema.algorithm
 
-        idms_new = lookup(model_set.session, t_ms, name="new").idmodel_status
         idalg = lookup_or_persist(model_set.session, t_alg, name=type(algorithm).__name__).idalgorithm
 
         dbinst = persist(model_set.session, t_m(
@@ -303,6 +266,40 @@ class Model(object):
                 idmodel=self.idmodel, 
                 idmetric_type=mt.idmetric_type
             )
+
+    def select_widgets(self, subquery, usage_type):
+        from sqlalchemy.sql.expression import select, literal
+
+        t_mw = schema.model_widget
+        tt_mw = t_mw.__table__
+        t_w = schema.widget
+        t_mwt = schema.model_widget_type
+
+        idtype = lookup(self.session, t_mwt, name=usage_type)
+
+        type_of_id = tt_mw.c.idmodel.type
+        sq = subquery.subquery('t')
+        self.session.execute(tt_mw.insert().from_select(
+            [tt_mw.c.idmodel, tt_mw.c.idwidget, tt_mw.c.idmodel_widget_type],
+            select([literal(self.idmodel, type_=type_of_id), sq.c.idwidget, literal(idtype, type_=type_of_id)])
+        ))
+
+    def select_features(self, subquery, usage_type):
+        from sqlalchemy.sql.expression import select, literal
+
+        t_mf = schema.model_feature
+        tt_mf = t_mf.__table__
+        t_w = schema.feature
+        t_mft = schema.model_feature_type
+
+        idtype = lookup(self.session, t_mft, name=usage_type)
+
+        type_of_id = tt_mf.c.idmodel.type
+        sq = subquery.subquery('t')
+        self.session.execute(tt_mf.insert().from_select(
+            [tt_mf.c.idmodel, tt_mf.c.idfeature, tt_mf.c.idmodel_feature_type],
+            select([literal(self.idmodel, type_=type_of_id), sq.c.idfeature, literal(idtype, type_=type_of_id)])
+        ))
 
     def select_training_widgets(self, subquery):
         from sqlalchemy.sql.expression import select, literal

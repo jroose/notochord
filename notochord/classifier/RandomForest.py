@@ -1,4 +1,4 @@
-from .. import App, schema, ABCArgumentGroup, ModelSet, Model, lookup, persist, CrossvalidationQuery
+from .. import App, schema, ABCArgumentGroup, Model, lookup, persist, CrossvalidationQuery
 import sqlalchemy
 import sys
 import uuid

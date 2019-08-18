@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from . import build_log, export, ModelSet
+from . import build_log, export
 from .ObjectStore import FileStore
 
 import argparse

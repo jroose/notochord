@@ -1,4 +1,4 @@
-from ..Model import ModelSet, Model
+from ..Model import Model
 
 from . import PopulatedTestCase, datadir_session
 from .. import export, schema, grouper, get_utcnow, temporary_table_like, temptable_scope
