@@ -22,7 +22,7 @@ class LSITrain(App):
         super(LSITrain, self).__init__(datadir, **kwargs)
         self.config['output_feature_set'] = output_feature_set or self.config['output_feature_set']
         self.config['input_feature_set'] = input_feature_set or self.config['input_feature_set']
-        self.config["model_name"] = model_name or self.config.get('model_name')
+        self.config["model_name"] = model_name or self.config.get('model_name', None)
         self.config['datasources'] = datasources or self.config.get('datasources')
         self.config['min_idwidget'] = (min_idwidget, None)[min_idwidget is None]
         self.config['max_idwidget'] = (max_idwidget, None)[max_idwidget is None]
@@ -38,23 +38,22 @@ class LSITrain(App):
         from ..schema import feature_set as t_fs
         from ..schema import datasource as t_ds
 
-        with self.session_scope() as session:
+        with self.context_scope() as instance:
+            self.log.info("Initializing model")
+            model = instance.build_model(sklearn.decomposition.TruncatedSVD, **self.hyperparameters)
+
             self.log.info("Querying for input features")
-            fs_words = session.query(t_fs).filter_by(name=self.config['input_feature_set'])
+            fs_words = instance.query(t_fs).filter_by(name=self.config['input_feature_set'])
 
             self.log.info("Creating output features")
-            fs_lsi = lookup_or_persist(session, t_fs, name=self.config['output_feature_set'], idmodel=None)
+            fs_lsi = lookup_or_persist(instance, t_fs, name=self.config['output_feature_set'], idmodel=None)
             output_features = []
             for it in xrange(self.hyperparameters["n_components"]):
-                idf = lookup_or_persist(session, t_f, name=unicode(it), idfeature_set=fs_lsi.idfeature_set)
+                idf = lookup_or_persist(instance, t_f, name=unicode(it), idfeature_set=fs_lsi.idfeature_set)
                 output_features.append(idf)
 
-            self.log.info("Initializing model")
-            model_set = ModelSet(session, name=self.config['model_name'])
-            svd = sklearn.decomposition.TruncatedSVD(**self.hyperparameters)
-
             self.log.info("Querying input matrix")
-            q_words = session.query(t_wf.idfeature) \
+            q_words = instance.query(t_wf.idfeature) \
                     .join(t_w, t_w.idwidget == t_wf.idwidget) \
                     .join(t_f, t_f.idfeature == t_wf.idfeature) \
                     .join(t_fs, t_fs.idfeature_set == t_f.idfeature_set) \
@@ -69,17 +68,15 @@ class LSITrain(App):
                     datasources = self.config['datasources']
                 )
 
-            model = model_set.new_model(svd, q_words, log=self.log)
-
             self.log.info("Creating output feature set associated with model")
-            fs_lsi = lookup_or_persist(session, t_fs, name=self.config['output_feature_set'], idmodel=model.idmodel)
+            fs_lsi = lookup_or_persist(instance, t_fs, name=self.config['output_feature_set'], idmodel=model.idmodel)
             output_features = []
             for it in xrange(self.hyperparameters["n_components"]):
-                idf = lookup_or_persist(session, t_f, name=unicode(it), idfeature_set=fs_lsi.idfeature_set)
+                idf = lookup_or_persist(instance, t_f, name=unicode(it), idfeature_set=fs_lsi.idfeature_set)
                 output_features.append(idf)
 
             self.log.info("Immortalizing prediction features")
-            q_lsi = session.query(t_f.idfeature) \
+            q_lsi = instance.query(t_f.idfeature) \
                     .join(t_fs, t_fs.idfeature_set == t_f.idfeature_set) \
                     .filter(t_fs.name == self.config['output_feature_set']) \
                     .filter(t_fs.idmodel == model.idmodel)
@@ -87,7 +84,7 @@ class LSITrain(App):
             model.select_predicts_features(q_lsi)
 
             self.log.info("Gathering selection of widgets")
-            all_widgets = session.query(t_w.idwidget)
+            all_widgets = instance.query(t_w.idwidget)
             all_widgets = filter_widgets(
                     all_widgets,
                     min_idwidget = self.config['min_idwidget'],

@@ -66,21 +66,53 @@ class CrossvalidationQuery(object):
 
 @export
 class Model(object):
-    def __init__(self, session, dbinst, log=None):
+    def __init__(self, context, dbinst, pyinst):
         self.__dict__.update(dict(
             _dbinst=dbinst,
-            session=session,
-            log=log or null_log
+            _pyinst=pyinst,
+            context = context
         ))
 
+    @classmethod
+    def new(klass, context, algorithm_klass, params={}):
+        from .schema import model as t_m
+
+        pyinst = algorithm_klass(**params)
+
+        dbinst = persist(context, t_m(
+            algorithm_name=klass.__name__,
+            uuid=str(uuid.uuid4()),
+            hyperparameters=base64.b64encode(pickle.dumps(params))
+        ))
+
+        return klass(context, dbinst, pyinst)
+
+    @property
+    def idmodel(self):
+        return self._dbinst.idmodel
+
+    @property
+    def uuid(self):
+        return self._dbinst.uuid
+
+    @property
+    def algorithm_name(self):
+        return self._dbinst.algorithm_name
+    
+    @property
+    def log(self):
+        return self.context.log
+
     def __getattr__(self, name):
-        return getattr(self._dbinst, name)
+        return getattr(self._pyinst, name)
 
     def __setattr__(self, name, value):
-        raise TypeError("Model instances are immutable")
+        return setattr(self._pyinst, name, value)
 
     def _get_ordered_data(self, t_mw, sparse_inputs=False, batch_size=None, get_labels=True):
         from sqlalchemy.sql.expression import and_
+
+        context = self.context
 
         t_w = schema.widget
         t_wf = schema.widget_feature
@@ -137,7 +169,7 @@ class Model(object):
         input_col_encoder = build_encoder(x.idfeature for x in self.query_input_features())
         num_input_features = len(input_col_encoder)
 
-        widgets = self.session.query(pk(t_mw), t_mw.idwidget) \
+        widgets = context.query(pk(t_mw), t_mw.idwidget) \
             .filter(t_mw.idmodel==self.idmodel) \
             .order_by(pk(t_mw).asc())
         it_widget = iter(widgets)
@@ -148,7 +180,7 @@ class Model(object):
                 break
             widget_encoder = dict(((x.idwidget,i) for i, x in enumerate(widget_chunk)))
 
-            q_inputs = self.session.query(t_wf.idwidget, t_wf.idfeature, t_wf.value) \
+            q_inputs = context.query(t_wf.idwidget, t_wf.idfeature, t_wf.value) \
                 .select_from(t_mw) \
                 .filter(t_mw.idmodel == self.idmodel) \
                 .filter(pk(t_mw) >= widget_chunk[0][0]) \
@@ -168,7 +200,7 @@ class Model(object):
 
 
 #        if get_labels:
-#            outputs = self.session.query(t_wf.idwidget, t_wf.idfeature, t_wf.value) \
+#            outputs = context.query(t_wf.idwidget, t_wf.idfeature, t_wf.value) \
 #                .select_from(t_wf) \
 #                .join(t_mtof, and_(t_mtof.idfeature == t_wf.idfeature, t_mtof.idmodel == self.idmodel)) \
 #                .join(t_mw, and_(t_mw.idwidget == t_wf.idwidget, t_mw.idmodel == self.idmodel)) \
@@ -207,62 +239,44 @@ class Model(object):
 #        for ret in self._get_data(widgets, sparse_inputs=sparse_inputs, get_labels=False):
 #            yield ret
 
-    @classmethod
-    def new_from_model_set(klass, algorithm, input_features, output_features=None, params=None, log=None):
-        t_m = schema.model
-        t_ms = schema.model_status
-        t_alg = schema.algorithm
-
-        idalg = lookup_or_persist(model_set.session, t_alg, name=type(algorithm).__name__).idalgorithm
-
-        dbinst = persist(model_set.session, t_m(
-                idmodel_set=model_set.idmodel_set, idmodel_status=idms_new, 
-                idalgorithm=idalg, uuid=str(uuid.uuid4()),
-                hyperparameters=base64.b64encode(pickle.dumps(params or algorithm.get_params()))
-            ))
-
-        ret = klass(model_set.session, dbinst, log=log)
-        ret.select_input_features(input_features)
-        if output_features is not None:
-            ret.select_output_features(output_features)
-            ret.select_predicts_features(output_features)
-
-        return ret
-
     def set_trained(self, package):
         t_ms = schema.model_status
-        ms_trained = lookup(self.session, t_ms, name="trained")
+        ms_trained = lookup(self.context, t_ms, name="trained")
         self._dbinst.trained_time = get_utcnow()
         self._dbinst.trained_package = base64.b64encode(pickle.dumps(package))
         self._dbinst.idmodel_status = ms_trained.idmodel_status
-        persist(self.session, self._dbinst)
+        persist(self.context, self._dbinst)
 
     def set_metric(self, metric_type, value):
         t_metric = schema.metric
         t_mt = schema.metric_type
+
+        context = self.context
         
-        mt = lookup(self.session, t_mt, name=metric_type) \
-            or persist(self.session, t_mt(name=metric_type))
+        mt = lookup(context, t_mt, name=metric_type) \
+            or persist(context, t_mt(name=metric_type))
         idmt = mt.idmetric_type
         idme = self.idmodel
 
-        metric = lookup(self.session, t_metric, idmodel=idme, idmetric_type=idmt)
+        metric = lookup(context, t_metric, idmodel=idme, idmetric_type=idmt)
         if metric is not None:
             metric.value = value
-            persist(self.session, metric)
+            persist(context, metric)
         else:
-            persist(self.session, t_metric(idmodel=idme, idmetric_type=idmt, value=value))
+            persist(context, t_metric(idmodel=idme, idmetric_type=idmt, value=value))
 
     def get_metric(self, metric):
         t_metric = schema.metric
         t_mt = schema.metric_type
 
-        mt = lookup(self.session, t_mt, name=metric)
+        context = self.context
+
+        mt = lookup(context, t_mt, name=metric)
         if mt is None:
             raise ValueError("Unknown metric type: '{}'".format(metric))
 
         return lookup(
-                self.session, t_metric, 
+                context, t_metric, 
                 idmodel=self.idmodel, 
                 idmetric_type=mt.idmetric_type
             )
@@ -275,11 +289,13 @@ class Model(object):
         t_w = schema.widget
         t_mwt = schema.model_widget_type
 
-        idtype = lookup(self.session, t_mwt, name=usage_type)
+        context = self.context
+
+        idtype = lookup(context, t_mwt, name=usage_type)
 
         type_of_id = tt_mw.c.idmodel.type
         sq = subquery.subquery('t')
-        self.session.execute(tt_mw.insert().from_select(
+        context.execute(tt_mw.insert().from_select(
             [tt_mw.c.idmodel, tt_mw.c.idwidget, tt_mw.c.idmodel_widget_type],
             select([literal(self.idmodel, type_=type_of_id), sq.c.idwidget, literal(idtype, type_=type_of_id)])
         ))
@@ -292,11 +308,11 @@ class Model(object):
         t_w = schema.feature
         t_mft = schema.model_feature_type
 
-        idtype = lookup(self.session, t_mft, name=usage_type)
+        idtype = lookup(self.context, t_mft, name=usage_type)
 
         type_of_id = tt_mf.c.idmodel.type
         sq = subquery.subquery('t')
-        self.session.execute(tt_mf.insert().from_select(
+        self.context.execute(tt_mf.insert().from_select(
             [tt_mf.c.idmodel, tt_mf.c.idfeature, tt_mf.c.idmodel_feature_type],
             select([literal(self.idmodel, type_=type_of_id), sq.c.idfeature, literal(idtype, type_=type_of_id)])
         ))
@@ -310,7 +326,7 @@ class Model(object):
 
         idtype = tt_mtw.c.idmodel.type
         sq = subquery.subquery('t')
-        self.session.execute(tt_mtw.insert().from_select(
+        self.context.execute(tt_mtw.insert().from_select(
             [tt_mtw.c.idmodel, tt_mtw.c.idwidget],
             select([literal(self.idmodel, type_=idtype), sq.c.idwidget])
         ))
@@ -324,7 +340,7 @@ class Model(object):
 
         idtype = tt_mpw.c.idmodel.type
         sq = subquery.subquery('t')
-        self.session.execute(tt_mpw.insert().from_select(
+        self.context.execute(tt_mpw.insert().from_select(
             [tt_mpw.c.idmodel, tt_mpw.c.idwidget],
             select([literal(self.idmodel, type_=idtype), sq.c.idwidget])
         ))
@@ -338,7 +354,7 @@ class Model(object):
 
         idtype = tt_mvw.c.idmodel.type
         sq = subquery.subquery('t')
-        self.session.execute(tt_mvw.insert().from_select(
+        self.context.execute(tt_mvw.insert().from_select(
             [tt_mvw.c.idmodel, tt_mvw.c.idwidget],
             select([literal(self.idmodel, type_=idtype), sq.c.idwidget])
         ))
@@ -352,7 +368,7 @@ class Model(object):
 
         idtype = tt_mtif.c.idmodel.type
         sq = subquery.subquery('t')
-        self.session.execute(
+        self.context.execute(
             insert_ignore(t_mtif).from_select(
                 [t_mtif.idmodel, t_mtif.idfeature],
                 select([literal(self.idmodel, type_=idtype), sq.c.idfeature])
@@ -367,7 +383,7 @@ class Model(object):
 
         idtype = tt_mtof.c.idmodel.type
         sq = subquery.subquery('t')
-        self.session.execute(
+        self.context.execute(
             insert_ignore(t_mtof).from_select(
                 [t_mtof.idmodel, t_mtof.idfeature],
                 select([literal(self.idmodel, type_=idtype), sq.c.idfeature])
@@ -383,12 +399,12 @@ class Model(object):
         idtype = t_fs.idmodel.type
         idmodel = literal(self.idmodel, type_=idtype)
 
-        old_fs = self.session.query(idmodel, t_fs.name) \
+        old_fs = self.context.query(idmodel, t_fs.name) \
                 .join(t_f, t_f.idfeature_set == t_fs.idfeature_set) \
                 .filter(t_f.idfeature.in_(subquery.subquery('t'))) \
                 .distinct()
 
-        self.session.execute(
+        self.context.execute(
             insert_ignore(t_fs).from_select(
                 [t_fs.idmodel, t_fs.name],
                 old_fs.subquery()
@@ -399,19 +415,19 @@ class Model(object):
         t_f = aliased(schema.feature)
         t_fs = aliased(schema.feature_set)
 
-        q = self.session.query(nt_fs.idfeature_set, t_f.name) \
+        q = self.context.query(nt_fs.idfeature_set, t_f.name) \
                     .select_from(t_f) \
                     .filter(t_f.idfeature.in_(subquery.subquery('t'))) \
                     .join(t_fs, t_fs.idfeature_set == t_f.idfeature_set) \
                     .join(nt_fs, and_(t_fs.name == nt_fs.name, nt_fs.idmodel == idmodel))
 
-        self.session.execute(
+        self.context.execute(
             insert_ignore(nt_f).from_select(
                 [nt_f.__table__.c.idfeature_set, nt_f.__table__.c.name],
                 q
         ))
 
-#        self.session.execute(
+#        self.context.execute(
 #            insert_ignore(t_mpf).from_select(
 #                [t_mpf.idmodel, t_mpf.idfeature],
 #                select([idmodel, t_f.idfeature])
@@ -423,42 +439,42 @@ class Model(object):
     def query_training_widgets(self):
         t_mtw = schema.model_trained_on_widget
 
-        return self.session.query(t_mtw) \
+        return self.context.query(t_mtw) \
             .filter_by(idmodel=self.idmodel) \
             .order_by(pk(t_mtw).asc())
 
     def query_predicts_widgets(self):
         t_mpw = schema.model_predicts_widget
 
-        return self.session.query(t_mpw) \
+        return self.context.query(t_mpw) \
             .filter_by(idmodel=self.idmodel) \
             .order_by(pk(t_mpw).asc())
 
     def query_validation_widgets(self):
         t_mvw = schema.model_validated_on_widget
 
-        return self.session.query(t_mvw) \
+        return self.context.query(t_mvw) \
             .filter_by(idmodel=self.idmodel) \
             .order_by(pk(t_mvw).asc())
 
     def query_input_features(self):
         t_mtif = schema.model_trained_on_input_feature
 
-        return self.session.query(t_mtif) \
+        return self.context.query(t_mtif) \
             .filter_by(idmodel=self.idmodel) \
             .order_by(pk(t_mtif).asc())
 
     def query_output_features(self):
         t_mtof = schema.model_trained_on_output_feature
 
-        return self.session.query(t_mtof) \
+        return self.context.query(t_mtof) \
             .filter_by(idmodel=self.idmodel) \
             .order_by(pk(t_mtof).asc())
 
     def query_predicts_features(self):
         t_f = schema.feature
         t_fs = schema.feature_set
-        return self.session.query(t_f.idfeature) \
+        return self.context.query(t_f.idfeature) \
             .join(t_fs, t_fs.idfeature_set == t_f.idfeature_set) \
             .filter(t_fs.idmodel == self.idmodel) \
             .order_by(t_f.idfeature.asc())
@@ -466,40 +482,40 @@ class Model(object):
     def count_training_widgets(self):
         from sqlalchemy.sql.expression import func, distinct
         t_mtw = schema.model_trained_on_widget
-        return self.session.query(func.count(distinct(t_mtw.idwidget))).filter_by(idmodel=self.idmodel).scalar()
+        return self.context.query(func.count(distinct(t_mtw.idwidget))).filter_by(idmodel=self.idmodel).scalar()
 
     def count_predicts_widgets(self):
         from sqlalchemy.sql.expression import func, distinct
         t_mpw = schema.model_trained_on_widget
-        return self.session.query(func.count(distinct(t_mpw.idwidget))).filter_by(idmodel=self.idmodel).scalar()
+        return self.context.query(func.count(distinct(t_mpw.idwidget))).filter_by(idmodel=self.idmodel).scalar()
 
     def count_validation_widgets(self):
         from sqlalchemy.sql.expression import func, distinct
         t_mvw = schema.model_validated_on_widget
-        return self.session.query(func.count(distinct(t_mvw.idwidget))).filter_by(idmodel=self.idmodel).scalar()
+        return self.context.query(func.count(distinct(t_mvw.idwidget))).filter_by(idmodel=self.idmodel).scalar()
 
     def count_input_features(self):
         from sqlalchemy.sql.expression import func, distinct
         t_mtif = schema.model_trained_on_input_feature
-        return self.session.query(func.count(distinct(t_mtif.idfeature))).filter_by(idmodel=self.idmodel).scalar()
+        return self.context.query(func.count(distinct(t_mtif.idfeature))).filter_by(idmodel=self.idmodel).scalar()
 
     def count_output_features(self):
         from sqlalchemy.sql.expression import func, distinct
         t_mtof = schema.model_trained_on_output_feature
-        return self.session.query(func.count(distinct(t_mtof.idfeature))).filter_by(idmodel=self.idmodel).scalar()
+        return self.context.query(func.count(distinct(t_mtof.idfeature))).filter_by(idmodel=self.idmodel).scalar()
 
     def count_predicts_features(self):
         from sqlalchemy.sql.expression import func, distinct
         t_f = schema.feature
         t_fs = schema.feature_set
-        return self.session.query(func.count(distinct(t_f.idfeature))) \
+        return self.context.query(func.count(distinct(t_f.idfeature))) \
             .join(t_fs, t_fs.idfeature_set == t_f.idfeature_set) \
             .filter(t_fs.idmodel == self.idmodel)
 
     def add_training_widgets(self, widgets):
         t_mtw = schema.model_trained_on_widget
         for batch in grouper(widgets, 490):
-            self.session.execute(
+            self.context.execute(
                 insert_ignore(t_mtw),
                 [dict(idmodel=self.idmodel, idwidget=x) for x in batch if x is not None]
             )
@@ -507,7 +523,7 @@ class Model(object):
     def add_predicts_widgets(self, widgets):
         t_mpw = schema.model_trained_on_widget
         for batch in grouper(widgets, 490):
-            self.session.execute(
+            self.context.execute(
                 insert_ignore(t_mpw),
                 [dict(idmodel=self.idmodel, idwidget=x) for x in batch if x is not None]
             )
@@ -515,7 +531,7 @@ class Model(object):
     def add_validation_widgets(self, widgets):
         t_mvw = schema.model_validated_on_widget
         for batch in grouper(widgets, 490):
-            self.session.execute(
+            self.context.execute(
                 insert_ignore(t_mvw),
                 [dict(idmodel=self.idmodel, idwidget=x) for x in batch if x is not None]
             )
@@ -523,7 +539,7 @@ class Model(object):
     def add_input_features(self, features):
         t_mtif = schema.model_trained_on_input_feature
         for batch in grouper(features, 490):
-            self.session.execute(
+            self.context.execute(
                 insert_ignore(t_mtif),
                 [dict(idmodel=self.idmodel, idfeature=x) for x in batch if x is not None]
             )
@@ -531,7 +547,7 @@ class Model(object):
     def add_output_features(self, features):
         t_mtof = schema.model_trained_on_output_feature
         for batch in grouper(features, 490):
-            self.session.execute(
+            self.context.execute(
                 insert_ignore(t_mtof),
                 [dict(idmodel=self.idmodel, idfeature=x) for x in batch if x is not None]
             )
@@ -539,7 +555,7 @@ class Model(object):
     def add_predicts_features(self, features):
         t_mpf = schema.model_predictes_feature
         for batch in grouper(features, 490):
-            self.session.execute(
+            self.context.execute(
                 insert_ignore(t_mpf),
                 [dict(idmodel=self.idmodel, idfeature=x) for x in batch if x is not None]
             )
@@ -580,6 +596,9 @@ class Model(object):
     def update_predictions(self, widgets, values):
         tuple_ = sqlalchemy.sql.expression.tuple_
 
+        log = self.log
+        context = self.context
+
         t_wf = schema.widget_feature
         tt_wf = t_wf.__table__
 
@@ -587,7 +606,7 @@ class Model(object):
             if isinstance(values, np.ndarray):
                 if values.ndim == 1:
                     values = values.reshape((values.size, 1))
-                self.log.info("rowdicts_generator {} {}".format(values.shape, (len(widgets), len(features))))
+                log.info("rowdicts_generator {} {}".format(values.shape, (len(widgets), len(features))))
                 assert tuple(values.shape) == (len(widgets), len(features))
                 if values.ndim == 1:
                     #1 dimensional numpy array
@@ -635,24 +654,24 @@ class Model(object):
                         )
 
         tmp_wf = temporary_table_like("tmp_widget_feature", t_wf)
-        with temptable_scope(self.session, tmp_wf):
+        with temptable_scope(context, tmp_wf):
             predicts_features = [x.idfeature for x in self.query_predicts_features()]
-            populate(self.session, tmp_wf, rowdicts_generator(widgets, predicts_features, values), batch_size=200)
+            populate(context, tmp_wf, rowdicts_generator(widgets, predicts_features, values), batch_size=200)
 
             t_wf_keys = tuple_(*tt_wf.primary_key)
             tmp_wf_keys = [getattr(tmp_wf.c, k.name) for k in tt_wf.primary_key]
 
             from sqlalchemy.sql.expression import select
-            self.session.execute(tt_wf.delete().where(t_wf_keys == select(tmp_wf_keys)))
-            self.session.execute(tt_wf.insert().from_select(tt_wf.columns, select(tmp_wf.columns)))
+            context.execute(tt_wf.delete().where(t_wf_keys == select(tmp_wf_keys)))
+            context.execute(tt_wf.insert().from_select(tt_wf.columns, select(tmp_wf.columns)))
 
-        #tmp_wf.drop(bind=self.session.bind)
+        #tmp_wf.drop(bind=context.bind)
         t_wf.metadata.remove(tmp_wf)
 
     def query_predictions(self):
         t_wf = schema.widget_feature
         
-        return self.session.query(t_wf) \
+        return self.context.query(t_wf) \
             .filter_by(idmodel=self.idmodel) \
             .order_by(t_wf.idwidget.asc(), t_wf.idfeature.asc())
 
@@ -661,7 +680,9 @@ class Model(object):
         t_fs = schema.feature_set
         t_f = schema.feature
 
-        q = self.session.query(t_wf) \
+        context = self.context
+
+        q = context.query(t_wf) \
             .select_from(t_fs) \
             .join(t_f, t_f.idfeature_set == t_fs.idfeature_set) \
             .join(t_wf, t_wf.idfeature == t_f.idfeature) \
@@ -687,12 +708,12 @@ class Model(object):
     @property
     def status(self):
         t_ms = schema.model_status
-        return self.session.query(t_ms.name).filter_by(idmodel_status=self.idmodel_status).one()[0]
+        return self.context.query(t_ms.name).filter_by(idmodel_status=self.idmodel_status).one()[0]
 
     @property
     def algorithm(self):
         t_alg = schema.algorithm
-        return self.session.query(t_alg.name).filter_by(idalgorithm=self.idalgorithm).one()[0]
+        return self.context.query(t_alg.name).filter_by(idalgorithm=self.idalgorithm).one()[0]
 
     @property
     def package(self):

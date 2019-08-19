@@ -14,6 +14,8 @@ from contextlib import contextmanager
 import os, shutil
 import uuid
 import time
+import base64
+import cPickle as pickle
 
 __all__ = []
 
@@ -48,6 +50,32 @@ class WorkOrderArgs(ABCArgumentGroup):
         group.add_argument("--min-idwidget", action="store", metavar="INT", type=int, default=None, help="Minimum idwidget")
         group.add_argument("--max-idwidget", action="store", metavar="INT", type=int, default=None, help="Maximum idwidget")
         group.add_argument("--datasource", dest='datasources', metavar="NAME", type=unicode, default=[], nargs="*", help="Datasources")
+
+@export
+class Context(object):
+    def __init__(self, app, session):
+        self.__dict__.update(dict(
+            _session = session,
+            _app=app
+        ))
+
+    @property
+    def app(self):
+        return self._app
+
+    @property
+    def log(self):
+        return self._app.log
+    
+    def build_model(self, __klass__, **kwargs):
+        from . import Model
+        return Model.new(self, __klass__, params=kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._session, name)
+
+    def __setattr__(self, name, value):
+        raise TypeError("Model contexts are immutable")
 
 @export
 class App(object):
@@ -146,7 +174,7 @@ class App(object):
         return [DataArgs(), InfoArgs()]
 
     def main(self):
-        pass
+        raise NotImplementedError("App.main() does not have a default implementation")
 
     def run(self, *args, **kwargs):
         try:
@@ -201,6 +229,17 @@ class App(object):
             session.commit()
         finally:
             session.close()
-            self._session = None
-    
-    
+
+    @contextmanager
+    def context_scope(self):
+        session = self.get_session()
+        context = Context(self, session)
+        try:
+            yield context
+        except:
+            session.rollback()
+            raise
+        else:
+            session.commit()
+        finally:
+            session.close()
