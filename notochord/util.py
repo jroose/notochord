@@ -204,18 +204,18 @@ def build_log(name, level=logging.INFO, nostderr=False, logfile=None):
     return log
 
 @export
-def filter_widgets(wq, min_idwidget=None, max_idwidget=None, datasources=[]):
+def filter_widgets(wq, min_idwidget=None, max_idwidget=None, widget_sets=[]):
     from .schema import widget as t_w
-    from .schema import datasource as t_ds
+    from .schema import widget_set as t_ds
 
-    wq = wq.join(t_ds, t_ds.iddatasource == t_w.iddatasource)
+    wq = wq.join(t_ds, t_ds.idwidget_set == t_w.idwidget_set)
 
     if min_idwidget is not None:
         wq = wq.filter(t_w.idwidget >= min_idwidget)
     if max_idwidget is not None:
         wq = wq.filter(t_w.idwidget < max_idwidget)
-    if datasources is not None and len(datasources) > 0:
-        wq = wq.filter(t_ds.name.in_(datasources))
+    if widget_sets is not None and len(widget_sets) > 0:
+        wq = wq.filter(t_ds.name.in_(widget_sets))
 
     return wq
 
@@ -223,7 +223,7 @@ def filter_widgets(wq, min_idwidget=None, max_idwidget=None, datasources=[]):
 def upload_widget_features(session, widget_features):
     from .schema import widget_feature as t_wf
     from .schema import widget as t_w
-    from .schema import datasource as t_ds
+    from .schema import widget_set as t_ds
     from .schema import feature as t_f
     from .schema import feature_set as t_fs
 
@@ -240,7 +240,7 @@ def upload_widget_features(session, widget_features):
         widget = Column(t_w.uuid.type, nullable=False)
         idfeature = Column(t_f.idfeature.type, nullable=False)
         idfeature_set = Column(t_fs.idfeature_set.type, nullable=False)
-        iddatasource = Column(t_w.iddatasource.type, nullable=False)
+        idwidget_set = Column(t_w.idwidget_set.type, nullable=False)
         __table_args__ = ({'prefixes':["TEMPORARY"], 'keep_existing':True},)
         __tablename__ = "tmp_upload"
 
@@ -258,12 +258,12 @@ def upload_widget_features(session, widget_features):
 #                        .join(t_wf, t_wf.idwidget == t_w.idwidget) \
 #                        .join(t_f, t_f.idfeature == t_wf.idfeature) \
 #                        .filter(t_f.idfeature_set == tmp_upload.idfeature_set) \
-#                        .filter(t_w.iddatasource == tmp_upload.iddatasource)
+#                        .filter(t_w.idwidget_set == tmp_upload.idwidget_set)
 #        )))
         session.execute(
             insert_ignore(t_w, dialect).from_select(
-                [t_w.uuid, t_w.iddatasource],
-                session.query(tmp_upload.widget, tmp_upload.iddatasource)
+                [t_w.uuid, t_w.idwidget_set],
+                session.query(tmp_upload.widget, tmp_upload.idwidget_set)
         ))
         session.execute(
             insert_ignore(t_wf, dialect).from_select(
@@ -271,7 +271,7 @@ def upload_widget_features(session, widget_features):
                 session.query(t_w.idwidget, tmp_upload.idfeature) \
                     .select_from(tmp_upload) \
                     .join(t_w, t_w.uuid == tmp_upload.widget) \
-                    .filter(t_w.iddatasource == tmp_upload.iddatasource)
+                    .filter(t_w.idwidget_set == tmp_upload.idwidget_set)
         ))
     tmp_upload.metadata.remove(tmp_upload.__table__)
     if session.bind.dialect.name.startswith("mysql"):

@@ -49,7 +49,7 @@ class WorkOrderArgs(ABCArgumentGroup):
     def __call__(self, group):
         group.add_argument("--min-idwidget", action="store", metavar="INT", type=int, default=None, help="Minimum idwidget")
         group.add_argument("--max-idwidget", action="store", metavar="INT", type=int, default=None, help="Maximum idwidget")
-        group.add_argument("--datasource", dest='datasources', metavar="NAME", type=unicode, default=[], nargs="*", help="Datasources")
+        group.add_argument("--widget-set", dest='widget_sets', metavar="NAME", type=unicode, default=[], nargs="*", help="Widget sets")
 
 @export
 class Context(object):

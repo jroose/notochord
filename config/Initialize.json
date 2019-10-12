@@ -1,14 +1,9 @@
 {
-    "prepopulate":[
-        {
-            "table":"model_status",
-            "values":[
-                {"name":"new"},
-                {"name":"ready"},
-                {"name":"trained"},
-                {"name":"production"}
-            ]
-        }
+    "tags":[
+        {"type":"mtag", "tag_set": "status", "tag":"new"},
+        {"type":"mtag", "tag_set": "status", "tag":"ready"},
+        {"type":"mtag", "tag_set": "status", "tag":"trained"},
+        {"type":"mtag", "tag_set": "status", "tag":"production"}
     ],
     "object_stores":[
         {"name":"file_store", "uri":"file://{datadir}/file_store", "kwargs":{"compression":"gzip"}}

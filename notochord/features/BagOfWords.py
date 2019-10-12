@@ -29,12 +29,12 @@ class BagOfWords(App):
     def build_parser_groups():
         return [BagOfWordsArgs(), WorkOrderArgs()] + App.build_parser_groups()
 
-    def __init__(self, datadir, input_feature_set=None, output_feature_set=None, input_feature=None, min_idwidget=None, max_idwidget=None, datasources=None, chunk_size=None, **kwargs):
+    def __init__(self, datadir, input_feature_set=None, output_feature_set=None, input_feature=None, min_idwidget=None, max_idwidget=None, widget_sets=None, chunk_size=None, **kwargs):
         super(BagOfWords, self).__init__(datadir, **kwargs)
         self.config['output_feature_set'] = output_feature_set or self.config['output_feature_set']
         self.config['input_feature_set'] = input_feature_set or self.config['input_feature_set']
         self.config['input_feature'] = input_feature or self.config.get('input_feature')
-        self.config['datasources'] = datasources or self.config.get('datasources')
+        self.config['widget_sets'] = widget_sets or self.config.get('widget_sets')
         self.config["chunk_size"] = chunk_size or self.config.get('chunk_size', 1024)
         self.config['min_idwidget'] = (min_idwidget, None)[min_idwidget is None]
         self.config['max_idwidget'] = (max_idwidget, None)[max_idwidget is None]
@@ -50,7 +50,7 @@ class BagOfWords(App):
         from ..schema import widget_feature as t_wf
         from ..schema import feature as t_f
         from ..schema import feature_set as t_fs
-        from ..schema import datasource as t_ds
+        from ..schema import widget_set as t_ds
         from ..schema import object_store as t_os
 
         with self.session_scope() as session:
@@ -79,7 +79,7 @@ class BagOfWords(App):
                 q_w,
                 min_idwidget = self.config['min_idwidget'],
                 max_idwidget = self.config['max_idwidget'],
-                datasources = self.config['datasources']
+                widget_sets = self.config['widget_sets']
             )
 
             q_wf = session.query(t_wf.idwidget, t_wf.idfeature) \
@@ -91,9 +91,9 @@ class BagOfWords(App):
                 q_wf = q_wf.filter(t_w.idwidget >= self.config['min_idwidget'])
             if self.config['max_idwidget'] is not None:
                 q_wf = q_wf.filter(t_w.idwidget < self.config['max_idwidget'])
-            if self.config['datasources'] is not None and len(self.config['datasources']) > 0:
-                q_wf = q_wf.join(t_ds, t_ds.iddatasource == t_w.iddatasource)
-                q_wf = q_wf.filter(t_ds.name.in_(self.config['datasources']))
+            if self.config['widget_sets'] is not None and len(self.config['widget_sets']) > 0:
+                q_wf = q_wf.join(t_ds, t_ds.idwidget_set == t_w.idwidget_set)
+                q_wf = q_wf.filter(t_ds.name.in_(self.config['widget_sets']))
 
             self.log.info("Deleting old features")
             #q_del = q_wf.delete()
@@ -107,7 +107,7 @@ class BagOfWords(App):
                 q_w,
                 min_idwidget = self.config['min_idwidget'],
                 max_idwidget = self.config['max_idwidget'],
-                datasources = self.config['datasources']
+                widget_sets = self.config['widget_sets']
             )
             
             q_w = q_w.join(t_wf, t_wf.idwidget == t_w.idwidget) \

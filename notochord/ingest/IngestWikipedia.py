@@ -65,7 +65,7 @@ def parse_wikipedia(fpath):
 class IngestWikipediaArgs(ABCArgumentGroup):
     def __call__(self, group):
         group.add_argument("--object-store", type=unicode, action="store", metavar="OS_NAME", default=None, nargs='?', help="Name of the object store")
-        group.add_argument("--datasource", type=unicode, action="store", metavar="DS_NAME", default=None, nargs='?', help="Name for this datasource")
+        group.add_argument("--widget_set", type=unicode, action="store", metavar="DS_NAME", default=None, nargs='?', help="Name for this widget_set")
         group.add_argument("--max-count", type=int, action="store", metavar="INT", default=None, help="Maximum number of articles")
         group.add_argument("wikifile", type=unicode, action="store", metavar="PATH", default=None, help="Path to the wiki XML file")
 
@@ -74,10 +74,10 @@ class IngestWikipedia(App):
     def build_parser_groups():
         return [IngestWikipediaArgs()] + App.build_parser_groups()
 
-    def __init__(self, datadir, wikifile, max_count=None, object_store=None, datasource=None, **kwargs):
+    def __init__(self, datadir, wikifile, max_count=None, object_store=None, widget_set=None, **kwargs):
         super(IngestWikipedia, self).__init__(datadir, **kwargs)
         self.config['object_store'] = object_store or self.config['object_store']
-        self.config['datasource' ] = datasource or self.config['datasource']
+        self.config['widget_set' ] = widget_set or self.config['widget_set']
         self.config['max_count' ] = max_count or self.config.get('max_count')
         self.config['wikifile' ] = wikifile
 
@@ -86,9 +86,9 @@ class IngestWikipedia(App):
         t_fs = schema.feature_set
         t_f = schema.feature
         t_wf = schema.widget_feature
-        t_ds = schema.datasource
+        t_ds = schema.widget_set
 
-        datasource_name = self.config['datasource']
+        widget_set_name = self.config['widget_set']
         wikifile = self.config['wikifile']
         object_store_name = self.config['object_store']
         continue_on_error = self.config.get('continue_on_error', True)
@@ -98,7 +98,7 @@ class IngestWikipedia(App):
             self.log.info("Preparing the object store")
             self.object_store = ABCObjectStore.open(session, object_store_name)
             idobject_store = self.object_store.idobject_store
-            iddatasource = lookup_or_persist(session, t_ds, name=datasource_name).iddatasource
+            idwidget_set = lookup_or_persist(session, t_ds, name=widget_set_name).idwidget_set
 
             self.log.info("Preparing the feature store")
             self.idfeature_set = lookup_or_persist(session, t_fs, name="ArticleParts", idobject_store=idobject_store).idfeature_set
@@ -137,7 +137,7 @@ class IngestWikipedia(App):
                             "widget": w_uuid.hex,
                             "idfeature": self.idfeature[k],
                             'idfeature_set': self.idfeature_set,
-                            'iddatasource': iddatasource
+                            'idwidget_set': idwidget_set
                         })
 
                 except Exception, e:
@@ -156,11 +156,11 @@ class IngestWikipedia(App):
                     sum_load_time += time.time() - load_start_time
                     avg_total_duration = (time.time() - time_init) / (it + 1)
                     avg_load_duration = sum_load_time / (it+1)
-                    self.log.info("Load time: {} Total time: {} Count: {}".format(avg_load_duration, avg_total_duration, it+1))
+                    self.log.info("Load rate: {} Total rate: {} Count: {}".format(1.0 / avg_load_duration, 1.0 / avg_total_duration, it+1))
                     
                     gc.collect()
                     if self.config.get('max_count') is not None:
-                        if it >= self.config.get('max_count'):
+                        if (it+1) >= self.config.get('max_count'):
                             break
         except KeyboardInterrupt:
             pass
