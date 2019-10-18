@@ -1,5 +1,6 @@
 from . import App, schema, ABCArgumentGroup, lookup_or_persist, create_label
 from .ObjectStore import ABCObjectStore
+from .CoherenceStore import ABCCoherenceStore
 import sqlalchemy
 import sys
 import shutil
@@ -68,19 +69,33 @@ class Initialize(App):
 
             self.log.info("Initializing object stores")
             O = self.config.get('object_stores', [])
-            stores = {}
+            object_stores = {}
             format_strings = dict(datadir=self.datadir)
             for obs in O:
                 name = obs['name'].format(**format_strings)
                 uri = obs['uri'].format(**format_strings)
-                stores[name] = ABCObjectStore.create(session, name, uri, **obs['kwargs'])
-            session.commit()
+                object_stores[name] = ABCObjectStore.create(session, name, uri, **obs.get('kwargs', {}))
 
             self.log.info("Prepopulating widget sets")
             for ws in self.config.get('widget_sets', []):
-                osinst = stores[ws['object_store']]
+                osinst = object_stores[ws['object_store']]
                 ctx.create_widget_set(ws['name'], osinst)
 
+            self.log.info("Initializing coherence stores")
+            O = self.config.get('coherence_stores', [])
+            coherence_stores = {}
+            format_strings = dict(datadir=self.datadir)
+            for obs in O:
+                name = obs['name'].format(**format_strings)
+                uri = obs['uri'].format(**format_strings)
+                coherence_stores[name] = ABCCoherenceStore.create(session, name, uri, **obs.get('kwargs', {}))
+
+            self.log.info("Prepopulating feature sets")
+            for fs in self.config.get('feature_sets', []):
+                csinst = coherence_stores[fs['coherence_store']]
+                ctx.create_feature_set(fs['name'], csinst)
+
+            session.commit()
 
 
 

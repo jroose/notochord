@@ -10,5 +10,11 @@
     ],
     "widget_sets":[
         {"name": "enwiki", "object_store": "article_store"}
+    ],
+    "coherence_stores":[
+        {"name":"coherence_store", "uri":"redis://localhost/0"}
+    ],
+    "feature_sets":[
+        {"name": "article_words", "coherence_store": "coherence_store"}
     ]
 }
