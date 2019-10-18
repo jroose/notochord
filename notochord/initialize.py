@@ -1,4 +1,4 @@
-from . import App, schema, ABCArgumentGroup, lookup_or_persist
+from . import App, schema, ABCArgumentGroup, lookup_or_persist, create_label
 from .ObjectStore import ABCObjectStore
 import sqlalchemy
 import sys
@@ -6,8 +6,8 @@ import shutil
 import os.path
 import json
 
-def good_tag_table_name(x):
-    return table_name.endswith("tag") and len(table_name) != 4 and table_name.startswith("_")
+def good_label_table_name(x):
+    return table_name.endswith("label") and len(table_name) != 4 and table_name.startswith("_")
 
 class InitializeArgs(ABCArgumentGroup):
     def __call__(self, group):
@@ -41,29 +41,17 @@ class Initialize(App):
         self.log.info("Creating schema")
         schema.TableBase.metadata.create_all(self.get_engine())
 
-        with self.session_scope() as session:
-            self.log.info("Prepopulating tags")
-            T = self.config.get("tags", [])
-            for tag_desc in T:
-                table_name = tag_desc['type']
-                if (not good_tag_table_name) or (not hasattr(schema, table_name)):
-                    raise ValueError("Invalid tag type: '{}'".format(table_name))
+        with self.context_scope() as ctx:
+            session = ctx.session
 
-                t_tag = getattr(schema, table_name)
-                t_tag_set = getattr(schema, "{}_set".format(table_name))
+            self.log.info("Prepopulating labels")
+            T = self.config.get("labels", [])
+            for label_desc in T:
+                table_name = label_desc['type']
+                if (not good_label_table_name) or (not hasattr(schema, table_name)):
+                    raise ValueError("Invalid label type: '{}'".format(table_name))
+                create_label(session, table_name, label_desc['label_set'], label_desc['label_name'])
 
-                cols = {
-                    'name':tag_desc['tag']
-                }
-
-                if 'tag_set' in tag_desc:
-                    tag_set_name = '{}_set'.format(table_name)
-                    idtag_set_name = 'id{}_set'.format(table_name)
-
-                    idtag_set = lookup_or_persist(session, t_tag_set, name=tag_desc['tag_set'])
-                    cols[idtag_set_name] = getattr(idtag_set, idtag_set_name)
-
-                lookup_or_persist(session, t_tag, **cols)
 
             self.log.info("Prepopulating tables")
             P = self.config.get('prepopulate', [])
@@ -80,13 +68,21 @@ class Initialize(App):
 
             self.log.info("Initializing object stores")
             O = self.config.get('object_stores', [])
+            stores = {}
             format_strings = dict(datadir=self.datadir)
             for obs in O:
                 name = obs['name'].format(**format_strings)
                 uri = obs['uri'].format(**format_strings)
-                ABCObjectStore.create(session, name, uri, **obs['kwargs'])
-
+                stores[name] = ABCObjectStore.create(session, name, uri, **obs['kwargs'])
             session.commit()
+
+            self.log.info("Prepopulating widget sets")
+            for ws in self.config.get('widget_sets', []):
+                osinst = stores[ws['object_store']]
+                ctx.create_widget_set(ws['name'], osinst)
+
+
+
 
 if __name__ == "__main__":
     App = Initialize.from_args(sys.argv[1:])

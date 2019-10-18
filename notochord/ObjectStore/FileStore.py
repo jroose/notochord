@@ -1,5 +1,5 @@
 from .. import export
-from .ABCObjectStore import ABCObjectStore
+from .ABCObjectStore import ABCObjectStore, ABCObjectCollection
 import json
 import os
 import posixpath
@@ -9,10 +9,57 @@ import uuid
 __all__ = []
 
 @export
+class FileObjectCollection(ABCObjectCollection):
+    def exists(self, item_uuid):
+        return os.path.exists(self.store.uuid2path(self.name, item_uuid))
+
+    def get(self, item_uuid, feature=None):
+        path = self.store.uuid2path(self.name, item_uuid)
+        with self.store.openfunc(path, 'rb') as fin:
+            ret = self.store.unmarshal(fin.read())
+
+        if feature is None:
+            return ret
+        else:
+            return ret[feature]
+
+    def put(self, item_uuid, content):
+        path_parts = [self.store.prefix_path, self.name] + self.store.uuid2pathparts(item_uuid)
+
+        dirpath = posixpath.join(*path_parts[:-1])
+        if not os.path.exists(dirpath):
+            os.makedirs(dirpath)
+
+        path = posixpath.join(dirpath, path_parts[-1])
+        with self.store.openfunc(path, 'wb') as fout:
+            fout.write(self.store.marshal(content))
+
+    def post(self, item_uuid, value, feature=None):
+        path = self.store.uuid2path(self.name, item_uuid)
+        with self.store.openfunc(path, 'rb') as fin:
+            ret = self.store.unmarshal(fin.read())
+        ret[feature] = value
+        with self.store.openfunc(path, 'wb') as fout:
+            fout.write(self.store.marshal(ret))
+
+    def delete(self, item_uuid):
+        path_parts = [self.store.prefix_path, self.name] + self.store.uuid2pathparts(item_uuid)
+
+        path = posixpath.join(*path_parts)
+        os.remove(path)
+
+        for itparts in reversed(xrange(2, len(path_parts))):
+            try:
+                os.rmdir(posixpath.join(*path_parts[:itparts]))
+            except OSError:
+                break
+
+
+@export
 @ABCObjectStore.register("file")
-class FileStore(ABCObjectStore):
-    def __init__(self, ds, directory_layout=[2,2], compression=None, marshal="json"):
-        super(FileStore, self).__init__(ds)
+class FileObjectStore(ABCObjectStore):
+    def __init__(self, ds, directory_layout=[2,2], compression=None, marshal=None):
+        super(FileObjectStore, self).__init__(ds)
 
         assert(all([isinstance(x, int) for x in directory_layout]))
 
@@ -64,49 +111,18 @@ class FileStore(ABCObjectStore):
 
         return ret
 
-    def uuid2path(self, item_uuid):
-        return posixpath.join(self.prefix_path, *self.uuid2pathparts(item_uuid))
+    def uuid2path(self, collection_name, item_uuid):
+        return posixpath.join(self.prefix_path, collection_name, *self.uuid2pathparts(item_uuid))
 
-    def exists(self, item_uuid):
-        return os.path.exists(self.uuid2path(item_uuid))
+    def create_collection(self, collection_name):
+        os.mkdir(posixpath.join(self.prefix_path, collection_name))
+        return self.get_collection(collection_name)
 
-    def get(self, item_uuid, feature=None):
-        with self.openfunc(self.uuid2path(item_uuid), 'rb') as fin:
-            ret = self.unmarshal(fin.read())
+    def delete_collection(self, collection_name):
+        os.rmdir(posixpath.join(self.prefix_path, collection_name))
 
-        if feature is None:
-            return ret
-        else:
-            return ret[feature]
+    def has_collection(self, collection_name):
+        return os.path.exists(posixpath.join(self.prefix_path, collection_name))
 
-    def put(self, item_uuid, content):
-        path_parts = [self.prefix_path] + self.uuid2pathparts(item_uuid)
-
-        dirpath = posixpath.join(*path_parts[:-1])
-        if not os.path.exists(dirpath):
-            os.makedirs(dirpath)
-
-        path = posixpath.join(*path_parts)
-        with self.openfunc(path, 'wb') as fout:
-            fout.write(self.marshal(content))
-
-    def post(self, item_uuid, value, feature=None):
-        path = self.uuid2path(item_uuid)
-        with self.openfunc(path, 'rb') as fin:
-            ret = self.unmarshal(fin.read())
-        ret[feature] = value
-        with self.openfunc(path, 'wb') as fout:
-            fout.write(self.marshal(ret))
-
-    def delete(self, item_uuid):
-        path_parts = [self.prefix_path] + self.uuid2pathparts(item_uuid)
-
-        path = posixpath.join(*path_parts)
-        os.remove(path)
-
-        for itparts in reversed(xrange(2, len(path_parts))):
-            try:
-                os.rmdir(posixpath.join(*path_parts[:itparts]))
-            except OSError:
-                break
-
+    def get_collection(self, collection_name):
+        return FileObjectCollection(self, collection_name)

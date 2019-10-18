@@ -1,11 +1,14 @@
 {
-    "tags":[
-        {"type":"mtag", "tag_set": "status", "tag":"new"},
-        {"type":"mtag", "tag_set": "status", "tag":"ready"},
-        {"type":"mtag", "tag_set": "status", "tag":"trained"},
-        {"type":"mtag", "tag_set": "status", "tag":"production"}
+    "labels":[
+        {"type":"model", "label_set": "status", "label_name":"new"},
+        {"type":"model", "label_set": "status", "label_name":"ready"},
+        {"type":"model", "label_set": "status", "label_name":"trained"},
+        {"type":"model", "label_set": "status", "label_name":"production"}
     ],
     "object_stores":[
-        {"name":"file_store", "uri":"file://{datadir}/file_store", "kwargs":{"compression":"gzip"}}
+        {"name":"article_store", "uri":"file://{datadir}/article_store", "kwargs":{"compression":"gzip", "marshal":"json"}}
+    ],
+    "widget_sets":[
+        {"name": "enwiki", "object_store": "article_store"}
     ]
 }

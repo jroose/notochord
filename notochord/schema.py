@@ -39,6 +39,20 @@ class object_store(TableBase):
 
 
 ################################################################################
+# Coherence Store
+################################################################################
+
+@export
+class coherence_store(TableBase):
+    idcoherence_store = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
+    name = Column(Unicode(STRING_LENGTH), nullable=False)
+    uri = Column(String(STRING_LENGTH), nullable=True)
+    kwargs = Column(LargeBinary(BLOB_LENGTH), nullable=True)
+    __table_args__ = (UniqueConstraint('name'),)
+
+
+
+################################################################################
 # Context
 ################################################################################
 
@@ -50,32 +64,32 @@ class context(TableBase):
     end_time = Column(UtcDateTime(timezone=True), nullable=True)
 
 
-
 ################################################################################
 # Widget
 ################################################################################
 
 @export
-class wtag_set(TableBase):
-    idwtag_set = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
+class widget_label_set(TableBase):
+    idwidget_label_set = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
     name = Column(String(STRING_LENGTH), nullable=False)
-    __table_args__ = (UniqueConstraint('name'), Index('idxwtag_set_name', 'name'))
+    __table_args__ = (UniqueConstraint('name'), Index('idxwidget_label_set_name', 'name'))
 
 @export
-class wtag(TableBase):
-    idwtag = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
-    idwtag_set = Column(Integer, ForeignKey('wtag_set.idwtag_set', onupdate='RESTRICT', ondelete='CASCADE'), nullable=False)
+class widget_label(TableBase):
+    idwidget_label = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
+    idwidget_label_set = Column(Integer, ForeignKey('widget_label_set.idwidget_label_set', onupdate='RESTRICT', ondelete='CASCADE'), nullable=False)
     name = Column(String(STRING_LENGTH), nullable=False)
-    __table_args__ = (UniqueConstraint('idwtag_set', 'name'), Index('idxwtag_idwtag_set_name', 'idwtag_set', 'name'))
+    __table_args__ = (UniqueConstraint('idwidget_label_set', 'name'), Index('idxwidget_label_idwidget_label_set_name', 'idwidget_label_set', 'name'))
 
 @export
-class widget_wtag(TableBase):
+class widget_tag(TableBase):
     idwidget = Column(Integer, ForeignKey('widget.idwidget', onupdate='RESTRICT', ondelete='CASCADE'), nullable=False, primary_key=True)
-    idwtag = Column(Integer, ForeignKey('wtag.idwtag', onupdate='RESTRICT', ondelete='CASCADE'), nullable=False, primary_key=True)
+    idwidget_label = Column(Integer, ForeignKey('widget_label.idwidget_label', onupdate='RESTRICT', ondelete='CASCADE'), nullable=False, primary_key=True)
 
 @export
 class widget_set(TableBase):
     idwidget_set = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
+    idobject_store = Column(Integer, ForeignKey('object_store.idobject_store', onupdate='RESTRICT', ondelete='CASCADE'), nullable=True)
     name = Column(Unicode(STRING_LENGTH), nullable=False)
     __table_args__ = (UniqueConstraint('name'),)
 
@@ -89,34 +103,33 @@ class widget(TableBase):
     __table_args__ = (UniqueConstraint('idwidget_set', 'uuid'), Index('idxwidget_iwidget_set_uuid', 'idwidget_set', 'uuid'), Index('idxwidget_idwidget_set', 'idwidget_set'))
 
 
-
 ################################################################################
 # Feature
 ################################################################################
 
 @export
-class ftag_set(TableBase):
-    idftag_set = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
+class feature_label_set(TableBase):
+    idfeature_label_set = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
     name = Column(String(STRING_LENGTH), nullable=False)
-    __table_args__ = (UniqueConstraint('name'), Index('idxftag_set_name', 'name'))
+    __table_args__ = (UniqueConstraint('name'), Index('idxfeature_label_set_name', 'name'))
 
 @export
-class ftag(TableBase):
-    idftag = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
-    idftag_set = Column(Integer, ForeignKey('ftag_set.idftag_set', onupdate='RESTRICT', ondelete='CASCADE'), nullable=False)
+class feature_label(TableBase):
+    idfeature_label = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
+    idfeature_label_set = Column(Integer, ForeignKey('feature_label_set.idfeature_label_set', onupdate='RESTRICT', ondelete='CASCADE'), nullable=False)
     name = Column(String(STRING_LENGTH), nullable=False)
-    __table_args__ = (UniqueConstraint('idftag_set', 'name'), Index('idxftag_idftag_set_name', 'idftag_set', 'name'))
+    __table_args__ = (UniqueConstraint('idfeature_label_set', 'name'), Index('idxfeature_label_idfeature_label_set_name', 'idfeature_label_set', 'name'))
 
 @export
-class feature_ftag(TableBase):
+class feature_tag(TableBase):
     idfeature = Column(Integer, ForeignKey('feature.idfeature', onupdate='RESTRICT', ondelete='CASCADE'), nullable=False, primary_key=True)
-    idftag = Column(Integer, ForeignKey('ftag.idftag', onupdate='RESTRICT', ondelete='CASCADE'), nullable=False, primary_key=True)
+    idfeature_label = Column(Integer, ForeignKey('feature_label.idfeature_label', onupdate='RESTRICT', ondelete='CASCADE'), nullable=False, primary_key=True)
 
 @export
 class feature_set(TableBase):
     idfeature_set = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
     idmodel = Column(Integer, ForeignKey('model.idmodel', onupdate='RESTRICT', ondelete='CASCADE'), nullable=True)
-    idobject_store = Column(Integer, ForeignKey('object_store.idobject_store', onupdate='RESTRICT', ondelete='CASCADE'), nullable=True)
+    idcoherence_store = Column(Integer, ForeignKey('coherence_store.idcoherence_store', onupdate='RESTRICT', ondelete='CASCADE'), nullable=True)
     name = Column(String(STRING_LENGTH), nullable=False)
     __table_args__ = (UniqueConstraint('idmodel', 'name'),)
 
@@ -137,22 +150,22 @@ class feature(TableBase):
 ################################################################################
 
 @export
-class mtag_set(TableBase):
-    idmtag_set = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
+class model_label_set(TableBase):
+    idmodel_label_set = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
     name = Column(String(STRING_LENGTH), nullable=False)
-    __table_args__ = (UniqueConstraint('name'), Index('idxmtag_set_name', 'name'))
+    __table_args__ = (UniqueConstraint('name'), Index('idxmodel_label_set_name', 'name'))
 
 @export
-class mtag(TableBase):
-    idmtag = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
-    idmtag_set = Column(Integer, ForeignKey('mtag_set.idmtag_set', onupdate='RESTRICT', ondelete='CASCADE'), nullable=False)
+class model_label(TableBase):
+    idmodel_label = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
+    idmodel_label_set = Column(Integer, ForeignKey('model_label_set.idmodel_label_set', onupdate='RESTRICT', ondelete='CASCADE'), nullable=False)
     name = Column(String(STRING_LENGTH), nullable=False)
-    __table_args__ = (UniqueConstraint('idmtag_set', 'name'), Index('idxmtag_idmtag_set_name', 'idmtag_set', 'name'))
+    __table_args__ = (UniqueConstraint('idmodel_label_set', 'name'), Index('idxmodel_label_idmodel_label_set_name', 'idmodel_label_set', 'name'))
 
 @export
-class model_mtag(TableBase):
+class model_tag(TableBase):
     idmodel = Column(Integer, ForeignKey('model.idmodel', onupdate='RESTRICT', ondelete='CASCADE'), nullable=False, primary_key=True)
-    idmtag = Column(Integer, ForeignKey('mtag.idmtag', onupdate='RESTRICT', ondelete='CASCADE'), nullable=False, primary_key=True)
+    idmodel_label = Column(Integer, ForeignKey('model_label.idmodel_label', onupdate='RESTRICT', ondelete='CASCADE'), nullable=False, primary_key=True)
 
 @export
 class model(TableBase):

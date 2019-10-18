@@ -54,17 +54,17 @@ default_test_config = json.loads(json.dumps({
                     {"name":u"validate"},
                 ]
             },{
-                "table":"mtag_set",
+                "table":"mlabel_set",
                 "values":[
-                    {"name":u"status", "idmtag_set":1},
+                    {"name":u"status", "idmlabel_set":1},
                 ]
             },{
-                "table":"mtag",
+                "table":"mlabel",
                 "values":[
-                    {"name":u"new", "idmtag_set":1},
-                    {"name":u"ready", "idmtag_set":1},
-                    {"name":u"trained", "idmtag_set":1},
-                    {"name":u"production", "idmtag_set":1}
+                    {"name":u"new", "idmlabel_set":1},
+                    {"name":u"ready", "idmlabel_set":1},
+                    {"name":u"trained", "idmlabel_set":1},
+                    {"name":u"production", "idmlabel_set":1}
                 ]
             }
         ],

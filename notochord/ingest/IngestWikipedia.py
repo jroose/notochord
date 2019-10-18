@@ -82,93 +82,36 @@ class IngestWikipedia(App):
         self.config['wikifile' ] = wikifile
 
     def main(self):
-        t_w = schema.widget
-        t_fs = schema.feature_set
-        t_f = schema.feature
-        t_wf = schema.widget_feature
-        t_ds = schema.widget_set
-
         widget_set_name = self.config['widget_set']
         wikifile = self.config['wikifile']
         object_store_name = self.config['object_store']
+        max_count = self.config.get('max_count', None)
         continue_on_error = self.config.get('continue_on_error', True)
 
-        with self.session_scope() as session:
-
-            self.log.info("Preparing the object store")
-            self.object_store = ABCObjectStore.open(session, object_store_name)
-            idobject_store = self.object_store.idobject_store
-            idwidget_set = lookup_or_persist(session, t_ds, name=widget_set_name).idwidget_set
-
-            self.log.info("Preparing the feature store")
-            self.idfeature_set = lookup_or_persist(session, t_fs, name="ArticleParts", idobject_store=idobject_store).idfeature_set
-            self.idfeature = {}
-            for k in (u"title",u"text",u"id","uuid"):
-                self.idfeature[k] = lookup_or_persist(
-                    session, t_f, 
-                    name=k,
-                    idfeature_set=self.idfeature_set
-                ).idfeature
-            
-        self.log.info("Running IngestWikipedia App")
-        time_init = time.time()
-        count = 0
-
-        try:
-            total_wait_time = 0.0
-            sum_load_time = 0.0
-            load_count = 0
-            widget_features = []
-            #gc_items = collections.Counter(type(x) for x in gc.get_objects())
-            for it, article in enumerate(parse_wikipedia(wikifile)):
-                article_title, article_id, article_text = article
-                #print(article_title)
-                try:
-                    w_uuid=uuid.uuid5(uuid.NAMESPACE_URL, str(article_id))
-                    self.object_store.put(w_uuid.hex, {
-                        'uuid':w_uuid.hex,
-                        'title':article_title,
-                        'id':article_id,
-                        'text':article_text
-                    })
-
-                    for k in (u"title",u"text",u"id","uuid"):
-                        widget_features.append({
-                            "widget": w_uuid.hex,
-                            "idfeature": self.idfeature[k],
-                            'idfeature_set': self.idfeature_set,
-                            'idwidget_set': idwidget_set
+        with self.context_scope() as C:
+            widget_set = C.load_widget_set(widget_set_name)
+            with self.rate_timer(print_frequency=1000) as timer:
+                for article in parse_wikipedia(wikifile):
+                    article_title, article_id, article_text = article
+                    w_uuid = uuid.uuid5(uuid.NAMESPACE_URL, str(article_id))
+                    try:
+                        widget_set.create_widget(w_uuid.hex, content={
+                            'uuid':w_uuid.hex,
+                            'title':article_title,
+                            'id':article_id,
+                            'text':article_text
                         })
 
-                except Exception, e:
-                    self.log.info("Exception occurred from: {}".format(article))
-                    self.log.exception(e)
-                    if self.continue_on_error:
-                        continue
-                    else:
-                        raise
+                    except:
+                        if continue_on_error:
+                            self.log.exception("Problem ingesting article: {}".format(timer.count))
+                        else:
+                            raise
+                    finally:
+                        timer.inc()
 
-                if (it+1) % 5000 == 0:
-                    load_start_time = time.time()
-                    with self.session_scope() as session:
-                        upload_widget_features(session, widget_features)
-                    widget_features = []
-                    sum_load_time += time.time() - load_start_time
-                    avg_total_duration = (time.time() - time_init) / (it + 1)
-                    avg_load_duration = sum_load_time / (it+1)
-                    self.log.info("Load rate: {} Total rate: {} Count: {}".format(1.0 / avg_load_duration, 1.0 / avg_total_duration, it+1))
-                    
-                    gc.collect()
-                    if self.config.get('max_count') is not None:
-                        if (it+1) >= self.config.get('max_count'):
-                            break
-        except KeyboardInterrupt:
-            pass
-
-
-    @property
-    def continue_on_error(self):
-        return self.config.get('continue_on_error', True)
+                    if max_count and (timer.count >= max_count):
+                        break
 
 if __name__ == "__main__":
     App = IngestWikipedia.from_args(sys.argv[1:])

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from . import build_log, export
+from . import build_log, export, Context, RateTimer
 from .ObjectStore import FileStore
 
 import argparse
@@ -50,32 +50,6 @@ class WorkOrderArgs(ABCArgumentGroup):
         group.add_argument("--min-idwidget", action="store", metavar="INT", type=int, default=None, help="Minimum idwidget")
         group.add_argument("--max-idwidget", action="store", metavar="INT", type=int, default=None, help="Maximum idwidget")
         group.add_argument("--widget-set", dest='widget_sets', metavar="NAME", type=unicode, default=[], nargs="*", help="Widget sets")
-
-@export
-class Context(object):
-    def __init__(self, app, session):
-        self.__dict__.update(dict(
-            _session = session,
-            _app=app
-        ))
-
-    @property
-    def app(self):
-        return self._app
-
-    @property
-    def log(self):
-        return self._app.log
-    
-    def build_model(self, __klass__, **kwargs):
-        from . import Model
-        return Model.new(self, __klass__, params=kwargs)
-
-    def __getattr__(self, name):
-        return getattr(self._session, name)
-
-    def __setattr__(self, name, value):
-        raise TypeError("Model contexts are immutable")
 
 @export
 class App(object):
@@ -135,6 +109,11 @@ class App(object):
 
         self._engine = None
         self._Session = None
+
+        self.content_dir = os.path.join(self.datadir, "content_store")
+        if not os.path.exists(self.content_dir):
+            os.mkdir(self.content_dir)
+
         self._object_store = None
 
     def get_engine(self, singleton=True):
@@ -243,3 +222,7 @@ class App(object):
             session.commit()
         finally:
             session.close()
+
+    def rate_timer(self, **kwargs):
+        ret = RateTimer(log=self.log, **kwargs)
+        return ret

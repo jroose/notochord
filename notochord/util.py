@@ -7,6 +7,7 @@ import iso8601
 import sys
 import datetime
 import sqlalchemy
+import time
 from contextlib import contextmanager
 
 __all__ = ["null_log", "export"]
@@ -17,6 +18,29 @@ null_log.addHandler(logging.NullHandler())
 def export(obj):
     inspect.getmodule(obj).__all__.append(obj.__name__)
     return obj
+
+@export
+class DBInstWrapper(object):
+    def __init__(self, context, dbinst):
+        self.__dict__.update(dict(
+            _dbinst=dbinst,
+            _context = context
+        ))
+    
+    @property
+    def context():
+        return self._context
+
+    @property
+    def dbinst():
+        return self._dbinst
+
+    def __getattr__(self, name):
+        return getattr(self._dbinst, name)
+
+    def __setattr__(self, name, value):
+        klass = type(self)
+        raise TypeError("{} instances are immutable".format(klass.name))
 
 @export
 def insert_ignore(t, dialect=None):
@@ -36,6 +60,135 @@ def grouper(iterable, n, fillvalue=None):
     # grouper('ABCDEFG', 3, 'x') --> ABC DEF Gxx"
     args = [iter(iterable)] * n
     return itertools.izip_longest(*args, fillvalue=fillvalue)
+
+@export
+def create_label(session, label_type, label_set_name, label_name):
+    from . import schema
+    if (not isinstance(label_type, str) and not isinstance(label_type, unicode)) or (label_type not in ('widget', 'model', 'feature')):
+        raise ValueError("Invalid tag type: '{}'".format(label_type))
+
+    if (not isinstance(label_set_name, str) and not isinstance(label_set_name, unicode)) or (len(label_set_name) >= 511) or( ':' in label_set_name):
+        raise ValueError("label_set_name must be a string with length < 512 containing no colons")
+
+    if (not isinstance(label_name, str) and not isinstance(label_name, unicode)) or (len(label_name) >= 511) or (':' in label_name):
+        raise ValueError("label_name must be a string with length < 512 containing no colons")
+
+    t_label_name = "{}_label".format(label_type)
+    t_label_set_name = "{}_label_set".format(label_type)
+
+    t_label = getattr(schema, t_label_name)
+    t_label_set = getattr(schema, t_label_set_name)
+
+    n_label_set = lookup_or_persist(session, t_label_set, name=label_set_name)
+    id_label_set_name = "id{}_label_set".format(label_type)
+    id_label_set = getattr(n_label_set, id_label_set_name)
+
+    cols = {
+        'name':label_name,
+        id_label_set_name: id_label_set
+    }
+
+    n_label = lookup_or_persist(session, t_label, **cols)
+
+    return n_label
+
+@export 
+def widget_label(session, set_name_label, name_label):
+    return create_label(session, 'widget', set_name_label, name_label)
+
+@export 
+def model_label(session, set_name_label, name_label):
+    return create_label(session, 'model', set_name_label, name_label)
+
+@export 
+def feature_label(session, set_name_label, name_label):
+    return create_label(session, 'feature', set_name_label, name_label)
+
+@export
+def create_tag(session, tag_type, taggable, label):
+    from . import schema
+
+    if (not isinstance(tag_type, str) and not isinstance(tag_type, unicode)) or tag_type not in ('widget', 'model', 'feature'):
+        raise ValueError("Invalid tag type: '{}'".format(tag_type))
+
+    t_tag_name = "{}_tag".format(tag_type)
+    t_tag = getattr(schema, t_tag_name)
+    t_label_name = "{}_label".format(tag_type)
+    t_label = getattr(schema, t_label_name)
+    idtaggable_name = "id{}".format(tag_type)
+    idlabel_name = "id{}_label".format(tag_type)
+
+    if not isinstance(label, t_label):
+        raise ValueError("Label must be instance of '{}'".format(t_label_name))
+
+    cols = {
+        idtaggable_name: getattr(taggable, idtaggable_name),
+        idlabel_name: getattr(label, idlabel_name)
+    }
+
+    ret = t_tag(**cols)
+    session.merge(ret)
+    session.flush()
+
+    return ret
+
+@export
+def tag_widget(session, taggable, label):
+    return create_tag(session, 'widget', taggable, label)
+
+@export
+def tag_model(session, taggable, label):
+    return create_tag(session, 'model', taggable, label)
+
+@export
+def tag_feature(session, taggable, label):
+    return create_tag(session, 'feature', taggable, label)
+
+@export
+class RateTimer(object):
+    def __init__(self, log, message=None, print_frequency=0):
+        self.log = log
+        self.message = message
+        self.print_frequency=print_frequency
+        self.count = None
+        self.start_time = None
+        self.stop_time = None
+        self.last_print_count = None
+
+        if self.message is None:
+            self.message = "Total Time: {total_time} Average Time: {average_time} Num Processed: {count}"
+
+    def print_message(self, from_time=None):
+        if from_time is None:
+            from_time = self.stop_time or time.time()
+
+        self.last_print_count = self.count
+        delta = from_time - self.start_time
+
+        self.log.info(self.message.format(**{
+            "average_time": delta / self.count,
+            "average_rate": self.count / delta,
+            "count": self.count,
+            "total_time": delta
+        }))
+
+    def inc(self):
+        self.count += 1
+        if (self.print_frequency > 0) and (self.count % self.print_frequency == 0):
+            self.print_message()
+
+
+    def __enter__(self):
+        self.count = 0
+        self.start_time = time.time()
+        self.last_print_count = 0
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop_time = time.time()
+        if self.count > 0 and (self.last_print_count != self.count):
+            self.print_message()
+
 
 #TODO: Switch to redis for cache
 @export
@@ -125,8 +278,14 @@ def lookup(session, table, **kwargs):
     return session.query(table).filter_by(**kwargs).one_or_none()
 
 @export
-def persist(session, inst, **kwargs):
+def persist(session, inst):
     session.add(inst)
+    session.flush()
+    return inst
+
+@export
+def merge(session, inst):
+    session.merge(inst)
     session.flush()
     return inst
 
