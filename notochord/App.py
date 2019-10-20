@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from . import build_log, export, Context, RateTimer
+from . import build_log, export, Context, RateTimer, lookup_or_persist, lookup, strip_subsecond
 from .ObjectStore import FileStore
 
 import argparse
@@ -15,7 +15,10 @@ import os, shutil
 import uuid
 import time
 import base64
+import pytz
+import datetime
 import cPickle as pickle
+import sqlalchemy_utc
 
 __all__ = []
 
@@ -115,6 +118,11 @@ class App(object):
             os.mkdir(self.content_dir)
 
         self._object_store = None
+        self._started_by = "Other"
+
+    @property
+    def started_by(self):
+        return self._started_by
 
     def get_engine(self, singleton=True):
         if hasattr(self, '_engine') and self._engine is None:
@@ -155,8 +163,21 @@ class App(object):
     def main(self):
         raise NotImplementedError("App.main() does not have a default implementation")
 
+    @property
+    def idexecution(self):
+        return self._idexecution
+
     def run(self, *args, **kwargs):
+        from . import schema
+
         try:
+            with self.session_scope() as session:
+                app_dbinst = lookup_or_persist(session, schema.app, name=unicode(type(self).__name__))
+                exec_dbinst = schema.execution(idapp=app_dbinst.idapp, config=json.dumps(self.config), uuid=uuid.uuid4().hex)
+                session.add(exec_dbinst)
+                session.flush()
+                self._idexecution = exec_dbinst.idexecution
+
             self.log.info("Starting {name}".format(name=self.name))
             start_time = time.time()
             self.main(*args, **kwargs)
@@ -165,6 +186,14 @@ class App(object):
             self.log.info("Completed {name}".format(name=self.name))
             self.log.info("Runtime: {} seconds".format(end_time - start_time))
             self.log.info("Max RSS: {} bytes".format(rss))
+
+            with self.session_scope() as session:
+                exec_dbinst = lookup(session, schema.execution, idexecution=self._idexecution)
+                exec_dbinst.end_time = sqlalchemy_utc.utcnow() #pytz.UTC.localize(strip_subsecond(datetime.datetime.utcnow()))
+                session.add(exec_dbinst)
+                session.flush()
+                session.commit()
+                
         except Exception, e:
             self.log.exception("Unhandled Exception")
             raise
@@ -193,6 +222,7 @@ class App(object):
             params['log'] = log
 
         ret = klass(**params)
+        ret._started_by = "Command Line"
 
         return ret
 

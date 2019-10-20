@@ -1,5 +1,5 @@
 from .util import *
-import schema
+from . import schema
 from .detail.Context import *
 from .Model import *
 from .App import *

@@ -23,11 +23,14 @@ class Initialize(App):
         super(Initialize, self).__init__(datadir, **kwargs)
         self.source_confdir = source_confdir
 
-    def main(self):
         self.log.info("Create the directory")
         if not os.path.exists(self.datadir):
             os.mkdir(self.datadir)
 
+        self.log.info("Creating schema")
+        schema.TableBase.metadata.create_all(self.get_engine())
+
+    def main(self):
         self.log.info("Copying configs")
         if self.source_confdir is not None:
             if os.path.exists(self.confdir):
@@ -38,9 +41,6 @@ class Initialize(App):
             if os.path.exists(config_path): 
                 with open(config_path, "rb") as fin:
                     self.config = json.loads(fin.read())
-
-        self.log.info("Creating schema")
-        schema.TableBase.metadata.create_all(self.get_engine())
 
         with self.context_scope() as ctx:
             session = ctx.session

@@ -20,6 +20,10 @@ def export(obj):
     return obj
 
 @export
+def strip_subsecond(x):
+    return datetime.datetime.strptime(x.strftime("%Y-%m-%d %H:%M:%S"), "%Y-%m-%d %H:%M:%S")
+
+@export
 class DBInstWrapper(object):
     def __init__(self, context, dbinst):
         self.__dict__.update(dict(

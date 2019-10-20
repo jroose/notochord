@@ -53,15 +53,33 @@ class coherence_store(TableBase):
 
 
 ################################################################################
-# Context
+# App, Execution, Context
 ################################################################################
+
+@export
+class app(TableBase):
+    idapp = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
+    name = Column(Unicode(STRING_LENGTH), nullable=False)
+    __table_args__ = (UniqueConstraint('name'),)
+
+@export
+class execution(TableBase):
+    idexecution = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
+    idapp = Column(Integer, ForeignKey('app.idapp', onupdate='RESTRICT', ondelete='CASCADE'), nullable=False)
+    uuid = Column(String(34), nullable=False)
+    config = Column(LargeBinary(BLOB_LENGTH), nullable=True)
+    start_time = Column(UtcDateTime(timezone=True), default=utcnow(), nullable=False)
+    end_time = Column(UtcDateTime(timezone=True), nullable=True)
+    __table_args__ = (UniqueConstraint('uuid'),)
 
 @export
 class context(TableBase):
     idcontext = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
+    idexecution = Column(Integer, ForeignKey('execution.idexecution', onupdate='RESTRICT', ondelete='CASCADE'), nullable=True)
     uuid = Column(String(34), nullable=False)
     start_time = Column(UtcDateTime(timezone=True), default=utcnow(), nullable=False)
     end_time = Column(UtcDateTime(timezone=True), nullable=True)
+
 
 
 ################################################################################
