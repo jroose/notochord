@@ -116,17 +116,13 @@ class WidgetSet(object):
         return self._dbinst.idwidget_set
 
     @property
-    def idobject_store(self):
-        return self._dbinst.idobject_store
-
-    @property
     def context(self):
         return self._context
 
     def __setattr__(self, name, value):
         raise TypeError("WidgetSet instances are immutable")
 
-    def create_widget(self, uuid=None, labels=[], content=None):
+    def create_widget(self, uuid=None, labels=[]):
         if uuid is None:
             uuid = uuid.uuid4().hex
 
@@ -144,7 +140,6 @@ class WidgetSet(object):
             n_widget = None
         else:
             tag_widget(session, n_widget, widget_label(session, 'widget_set', self.name))
-            self._collection.put(n_widget.uuid, content)
 
         return n_widget
 
@@ -192,27 +187,15 @@ class Context(object):
     def __setattr__(self, name, value):
         raise TypeError("Model contexts are immutable")
 
-    def create_widget_set(self, name, object_store):
+    def create_widget_set(self, name):
         if (not isinstance(name, str) and not isinstance(name, unicode)) or len(name) > 511:
             raise TypeError("name must be str with len < 512")
 
-        if isinstance(object_store, schema.object_store):
-            object_store = ABCObjectStore.open(self._session, object_store.name)
-        elif isinstance(object_store, str) or isinstance(object_store, unicode):
-            object_store = ABCObjectStore.open(self._session, object_store)
-        elif isinstance(object_store, ABCObjectStore):
-            pass
-        else:
-            raise TypeError("object_store must be schema.object_store or str")
-
         dbinst = persist(self._session, schema.widget_set(
-            name = name,
-            idobject_store = object_store.idobject_store
+            name = name
         ))
 
-        collection = object_store.create_collection(name)
-
-        ret = WidgetSet(dbinst=dbinst, collection=collection, context=self)
+        ret = WidgetSet(dbinst=dbinst, context=self)
 
         return ret
 
@@ -220,9 +203,7 @@ class Context(object):
         dbinst = lookup(self._session, schema.widget_set, name=widget_set_name)
         if dbinst is None:
             raise ValueError("Widget set does not exist: '{}'".format(widget_set_name))
-        object_store = ABCObjectStore.open_by_id(self._session, dbinst.idobject_store)
-        collection = object_store.get_collection(widget_set_name)
-        return WidgetSet(dbinst, collection, context=self)
+        return WidgetSet(dbinst, context=self)
 
     def create_feature_set(self, name, coherence_store):
         if (not isinstance(name, str) and not isinstance(name, unicode)) or len(name) > 511:
